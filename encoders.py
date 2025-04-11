@@ -24,7 +24,7 @@ class Encoder(ABC):
 
 
 class Golomb(Encoder):
-    DEFAULT_K_VALUE = 127
+    DEFAULT_K_VALUE = 64
     k: int
     suffix_len: int
 
@@ -62,7 +62,7 @@ class Golomb(Encoder):
             symbol_sum_value = self.k * zero_count
             """Suffix reading"""
             index += 1
-            suffix_substring = encoded_str[index:index + self.suffix_len]
+            suffix_substring = encoded_str[index:(index+self.suffix_len)]
             symbol_sum_value += int(suffix_substring, 2)
             index += self.suffix_len
             decoded_str += chr(symbol_sum_value)
@@ -71,6 +71,8 @@ class Golomb(Encoder):
     def get_additional_parameters(self):
         try:
             k_ = int(input(f"Insira um valor válido para K (caso inválido, k = {self.DEFAULT_K_VALUE} ou qualquer valor configurado anteriormente): "))
+            if k_ <= 0:
+                raise ValueError
             self.k = k_
         except ValueError:
             pass
@@ -130,21 +132,19 @@ def has_no_zeros(str_to_encode):
 
 
 class FibonacciZeckendorf(Encoder):
-    fibonacci_seq = []
 
     def __init__(self, name_: str):
         super().__init__(name_)
-        self.fibonacci_seq.append(1)
-        self.fibonacci_seq.append(2)
+        self.fibonacci_seq = [1, 2]
 
     def encode(self, str_to_encode: str):
         encoded_str = ''
         for character in str_to_encode:
-            """Stop bit"""
+            """Adding bits from right to left - starting with stop bit"""
             code = '1'
             """Ascii code"""
             char_value = ord(character)
-            """Starting from the index of the largest fibonacci value that fits and decreasing down to 0"""
+            """Starting from the index of the largest fibonacci value that is lesser than char_value and decreasing"""
             for i in range(self.get_index_of_nearest_fibonacci(char_value), -1, -1):
                 fibo_val = self.get_nth_fibonacci_val(i)
                 """If fibonacci value fits, subtract it from remainder and add 1 to encoding"""
@@ -180,12 +180,14 @@ class FibonacciZeckendorf(Encoder):
         pass
 
     def get_index_of_nearest_fibonacci(self, value):
+        """Example: input value 15 returns index of 13, the nearest fibonacci value to 15"""
         index = 0
         while (fibo_val := self.get_nth_fibonacci_val(index)) < value:
             index += 1
         return index if fibo_val == value else index - 1
 
     def get_nth_fibonacci_val(self, n: int):
+        """Compute fibonacci sequence as needed and store it for future reference"""
         if (curr_size := len(self.fibonacci_seq)) <= n:
             for _ in range(n - (curr_size - 1)):
                 self.fibonacci_seq.append(self.fibonacci_seq[-1] + self.fibonacci_seq[-2])
@@ -211,7 +213,6 @@ class Huffman(Encoder):
             bisect.insort(sorted_nodes_list, new_node, key=get_value)
         self.root = sorted_nodes_list[0]
         self.build_codes_dict(self.root, '')
-        print(self.codes_dict)
         return ''.join([self.codes_dict[c] for c in str_to_encode])
 
     def decode(self, encoded_str: str):
