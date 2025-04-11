@@ -1,6 +1,6 @@
 # Simple Encoding Algorithms
 
-Desenvolvido por Gustavo e Vitor como primeiro trabalho avaliativo da disciplina de Teoria da Informação: Compressão e Criptografia da Unisinos, ministrada pelo professor Elvandi da Silva Junior.
+Desenvolvido por Gustavo Lavina e Vitor Goulart como primeiro trabalho avaliativo da disciplina de Teoria da Informação: Compressão e Criptografia da Unisinos, ministrada pelo professor Elvandi da Silva Junior.
 
 ## Como executar
 

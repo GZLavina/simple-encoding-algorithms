@@ -1,3 +1,5 @@
+# DESENVOLVIDO POR GUSTAVO LAVINA E VITOR GOULART
+
 from abc import ABC, abstractmethod
 import math
 import bisect

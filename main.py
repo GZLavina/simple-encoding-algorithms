@@ -1,3 +1,5 @@
+# DESENVOLVIDO POR GUSTAVO LAVINA E VITOR GOULART
+
 from encoders import Encoder, Golomb, EliasGamma, FibonacciZeckendorf, Huffman
 from typing import List
 
