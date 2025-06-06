@@ -6,6 +6,7 @@ import bisect
 from textwrap import wrap
 from functools import reduce
 
+# CLASSES ABSTRATAS PARA FACILITAR O DESENVOLVIMENTO DA UI
 
 class Encoder(ABC):
     def __init__(self, name_: str):
@@ -60,21 +61,28 @@ class RepetitionCode(ErrorCorrectionEncoder):
     def encode(self, str_to_encode: str):
         encoded_str = ''
         for i in range(len(str_to_encode)):
+            """Multiplica o caracter atual por r e adiciona no valor de retorno"""
             encoded_str += str_to_encode[i] * self.r
         return encoded_str
 
     def decode(self, encoded_str: str):
         decoded_str = ''
         for i in range(len(encoded_str) // self.r):
+            """obtem o deslocamento multiplicando o indice atual por r"""
             shift = i * self.r
             substring = encoded_str[shift : shift + self.r]
+            """Conta o número de bits 0 e 1"""
             bit_count_dict = {bit: substring.count(bit) for bit in substring}
+            """Determina qual o bit prevalente"""
             max_count = max(bit_count_dict.values())
             prevalent_bits = [i for i, count in bit_count_dict.items() if count == max_count]
+            """Se houve empate no caso de um valor r par, retorna a mensagem de erro e descarta a mensagem"""
             if len(prevalent_bits) > 1:
                 return f"Múltiplos erros no segmento de número {i}: {substring} causaram empate entre os bits, impossível corrigir"
+            """Adiciona o bit correto na string de retorno"""
             correct_bit = prevalent_bits[0]
             decoded_str += correct_bit
+            """Se houve erro (ambos 0 e 1 estavam presente no segmento), avisa o usuario"""
             if len(bit_count_dict) > 1:
                 error_index = substring.index("1") if correct_bit == "0" else substring.index("0")
                 print(f"Erro encontrado no bit número {error_index + shift + 1} (da esquerda para a direita, iniciando em 1): {get_error_highlight(substring, error_index)}")
@@ -101,17 +109,22 @@ class Crc(ErrorCorrectionEncoder):
         self.set_generator(self.DEFAULT_GENERATOR)
 
     def get_rest(self, data: str):
+        """Pega a substring inicial"""
         substring = data[:self.d]
         for i in range(len(substring), len(data) + 1):
+            """Transforma o gerador em número e zera se o primeiro caracter da substring for 0"""
             xor_value = int(self.generator, 2) * int(substring[0])
+            """Aplica o XOR"""
             xor_sum = int(substring, 2) ^ xor_value
+            """Converte o resultado de volta para binário e descarta o primeiro caracter"""
             substring = format(xor_sum, f'0{self.d}b')[1:]
             if i < len(data):
+                """Se ainda não acabou, puxa o próximo bit da string"""
                 substring += data[i]
         return substring
 
     def encode(self, str_to_encode: str):
-        """Adding r = d - 1 zeros"""
+        """Adicionando zeros ao final"""
         str_with_zeros = str_to_encode + ('0' * (self.d - 1))
         return str_to_encode + self.get_rest(str_with_zeros)
 
@@ -140,12 +153,14 @@ def get_error_highlight(sequence: str, error_index: int):
 
 
 class Hamming74(ErrorCorrectionEncoder):
+    # Matriz geradora:
     # 1 0 0 0 | 1 0 1 -> 5
     # 0 1 0 0 | 1 1 0 -> 6
     # 0 0 1 0 | 1 1 1 -> 7
     # 0 0 0 1 | 0 1 1 -> 3
     CODE_SEQUENCE = [5, 6, 7, 3]
 
+    # Ordem do cálculo de paridade para cada bit de paridade:
     XOR_ORDER = {
         4: [0, 2, 1],
         5: [1, 2, 3],
@@ -158,9 +173,10 @@ class Hamming74(ErrorCorrectionEncoder):
     # DDDDPPP
     def encode(self, str_to_encode: str):
         """Adiciona zeros ao final para que o tamanho seja multiplo de 4"""
-        if len(str_to_encode) % 4:
-            str_to_encode += '0' * (-len(str_to_encode) % 4)
-            print(f"Foi necessário adicionar {-len(str_to_encode) % 4} zeros de padding ao final da mensagem. Por favor, desconsidere-os após a decodificação.")
+        if len(str_to_encode) % 4 != 0:
+            padding_zeros = '0' * ((-len(str_to_encode)) % 4)
+            str_to_encode += padding_zeros
+            print(f"Foi necessário adicionar {len(padding_zeros)} zeros de padding ao final da mensagem. Por favor, desconsidere-os após a decodificação.")
         sequences = wrap(str_to_encode, 4)
         encoded_str = ''
         for sequence in sequences:
@@ -173,45 +189,54 @@ class Hamming74(ErrorCorrectionEncoder):
         return encoded_str
 
     def decode(self, encoded_str: str):
-        """Check if input length of string is multiple of 7"""
+        """Verifica se o número de bits é múltiplo de 7"""
         if not self.is_valid_str_to_decode(encoded_str):
             return "Mensagem com um número incorreto de caracteres!"
 
-        """Split the input string every 7th character"""
+        """Divide as strings em um lista a cada 7 caracteres"""
         decoded_str = ''
         sequences = wrap(encoded_str, 7)
         for n, sequence in enumerate(sequences):
+            """Inicializa um dicionário que mantém o número de cálculos corretos para cada bit"""
             check_count_dict = {i: 0 for i in range(7)}
             bits = list(map(int, sequence))
             sequence_correct = True
             for parity_bit_index in range(4, 7):
+                """Pega a ordem dos bits de dados que compoe o calculo de paridade"""
                 data_index_list = self.XOR_ORDER[parity_bit_index]
+                """Calculo da paridade"""
                 expected_parity_bit = bits[data_index_list[0]] ^ bits[data_index_list[1]] ^ bits[data_index_list[2]]
+                """Se o resultado estiver correto, adicionamos no dicionário para cada bit de dados e para o bit de paridade"""
                 if expected_parity_bit == bits[parity_bit_index]:
                     check_count_dict[parity_bit_index] += 1
                     for index in data_index_list:
                         check_count_dict[index] += 1
                 else:
                     sequence_correct = False
+            """Se não houve erro, concatena na string de retorno"""
             if sequence_correct:
                 decoded_str += sequence[:4]
             else:
+                """Monta uma lista com True para os bits de dados que participaram de calculos corretos e False para os outros"""
                 bool_indices = [check_count_dict[i] > 0 for i in range(4)]
                 if all(bool_indices[:4]):
+                    """Se todos participaram de cálculos corretos, o erro está no bit de paridade que não participou de um cálculo correto"""
                     wrong_parity_bit = min(check_count_dict, key=check_count_dict.get)
                     print(f'Erro no bit de paridade número {wrong_parity_bit - 3} do segmento de número {n + 1}: {get_error_highlight(sequence, wrong_parity_bit)}')
                     decoded_str += sequence[:4]
                 elif sum(bool_indices[:4]) == 3:
+                    """Se apenas 3 bits de dados participaram de cálculos corretos, o erro está naquele que não participou"""
                     wrong_data_bit_index = bool_indices.index(False)
-                    correction_bit = (int(sequence[wrong_data_bit_index]) + 1) % 2
+                    correction_bit = (int(sequence[wrong_data_bit_index]) + 1) % 2  # Transforma 1 em 0 e 0 em 1
                     print(f'Erro no bit de dados número {wrong_data_bit_index + 1} do segmento de número {n + 1}: {get_error_highlight(sequence, wrong_data_bit_index)}')
                     decoded_str += sequence[:wrong_data_bit_index] + str(correction_bit) + sequence[wrong_data_bit_index + 1 : 4]
                 elif sum(bool_indices) == 0:
-                    """Se todos os calculos falharam, o bit do meio deve ser alterado"""
+                    """Se todos os calculos falharam, o bit do meio está errado"""
                     correction_bit = (int(sequence[2]) + 1) % 2
                     print(f'Erro no bit de dados número 3 do segmento de número {n + 1}: {get_error_highlight(sequence, 2)}')
                     decoded_str += sequence[:2] + str(correction_bit) + sequence[3:4]
                 else:
+                    """Guard apenas para debug"""
                     print("Algo deu errado!")
                     return
         return decoded_str
