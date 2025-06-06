@@ -1,13 +1,17 @@
 # DESENVOLVIDO POR GUSTAVO LAVINA E VITOR GOULART
 
-from encoders import Encoder, Golomb, EliasGamma, FibonacciZeckendorf, Huffman
+from encoders import Encoder, Golomb, EliasGamma, FibonacciZeckendorf, Huffman, RepetitionCode, Crc, Hamming74, Ascii
 from typing import List
 
 AVAILABLE_ENCODERS: List[Encoder] = [
+    Ascii("Ascii"),
     Golomb(Golomb.DEFAULT_K_VALUE, "Golomb"),
     EliasGamma("Elias-Gamma"),
     FibonacciZeckendorf("Fibonacci/Zeckendorf"),
-    Huffman("Huffman")
+    Huffman("Huffman"),
+    RepetitionCode("Código de Repetição"),
+    Crc("CRC"),
+    Hamming74("Hamming(7, 4)")
 ]
 
 
@@ -45,6 +49,51 @@ def should_decode_message():
     return option == 'S' or option == 's'
 
 
+def get_follow_up_action(output_str: str, previous_encoder: Encoder):
+    action = input(
+        """O que deseja fazer com o resultado da operação? Insira:
+1 para codificar com outro algoritmo
+2 para decodificar com o mesmo algoritmo sem alterações
+3 para decodificar com o mesmo algoritmo com alterações
+4 para decodificar com outro algoritmo sem alterações
+5 para decodificar com outro algoritmo com alterações
+X para voltar ao menu principal
+""")
+    if action == '1':
+        try:
+            encoder = get_encoder()
+            encoder.get_additional_parameters()
+            encoded_str = encoder.encode(output_str)
+            print(f"Input codificado:\n{encoded_str}")
+            get_follow_up_action(encoded_str, encoder)
+        except Exception as error:
+            print("Algo deu errado ao tentar codificar a mensagem, verifique se está usando caracteres inválidos.")
+            print(error)
+            return
+    elif action == '2' or action == '3':
+        try:
+            str_to_decode = output_str if action == '2' else get_validated_encoded_str()
+            decoded_str = previous_encoder.decode(str_to_decode)
+            print(f'Mensagem decodificada:\n{decoded_str}')
+            get_follow_up_action(decoded_str, previous_encoder)
+        except Exception as error:
+            print("Houve um erro durante a decodificação:")
+            print(error)
+            return
+    elif action == '4' or action == '5':
+        try:
+            encoder = get_encoder()
+            encoder.get_additional_parameters()
+            str_to_decode = output_str if action == '4' else get_validated_encoded_str()
+            decoded_str = encoder.decode(str_to_decode)
+            print(f'Mensagem decodificada:\n{decoded_str}')
+            get_follow_up_action(decoded_str, encoder)
+        except Exception as error:
+            print(error)
+            print("Não foi possível decodificar a mensagem, tem certeza que está usando o método correto para essa mensagem?")
+            return
+
+
 def run():
     while True:
         action = input(
@@ -60,9 +109,9 @@ X para sair
                     encoder.get_additional_parameters()
                     encoded_str = encoder.encode(get_validated_str_to_encode(encoder))
                     print(f"Input codificado:\n{encoded_str}")
-                    if should_decode_message():
-                        print(f'Mensagem decodificada:\n{encoder.decode(encoded_str)}')
-                except:
+                    get_follow_up_action(encoded_str, encoder)
+                except Exception as error:
+                    print(error)
                     print("Algo deu errado ao tentar codificar a mensagem, verifique se está usando caracteres inválidos")
             else:
                 try:
@@ -70,7 +119,9 @@ X para sair
                     encoded_str = get_validated_encoded_str()
                     decoded_str = encoder.decode(encoded_str)
                     print(f"Input decodificado:\n{decoded_str}")
-                except:
+                    get_follow_up_action(decoded_str, encoder)
+                except Exception as error:
+                    print(error)
                     print("Não foi possível decodificar a mensagem, tem certeza que está usando o método correto para essa mensagem?")
         else:
             break
@@ -78,3 +129,4 @@ X para sair
 
 if __name__ == '__main__':
     run()
+

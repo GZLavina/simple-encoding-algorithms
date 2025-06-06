@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 import math
 import bisect
+from textwrap import wrap
+from functools import reduce
 
 
 class Encoder(ABC):
@@ -24,6 +26,204 @@ class Encoder(ABC):
     def is_valid_str_to_encode(self, str_to_encode: str):
         return True
 
+
+# ------------------------------ CODIFICAÇÕES DO TRABALHO 2 ------------------------------
+
+class ErrorCorrectionEncoder(Encoder):
+    def __init__(self, name_: str):
+        super().__init__(name_)
+
+    @abstractmethod
+    def encode(self, str_to_encode: str):
+        pass
+
+    @abstractmethod
+    def decode(self, encoded_str: str):
+        pass
+
+    @abstractmethod
+    def get_additional_parameters(self):
+        pass
+
+    def is_valid_str_to_encode(self, str_to_encode: str):
+        return all([c == "1" or c == "0" for c in str_to_encode]) and len(str_to_encode) > 0
+
+
+class RepetitionCode(ErrorCorrectionEncoder):
+    DEFAULT_R_VALUE = 3
+    r: int
+
+    def __init__(self, name_: str):
+        super().__init__(name_)
+        self.r = self.DEFAULT_R_VALUE
+
+    def encode(self, str_to_encode: str):
+        encoded_str = ''
+        for i in range(len(str_to_encode)):
+            encoded_str += str_to_encode[i] * self.r
+        return encoded_str
+
+    def decode(self, encoded_str: str):
+        decoded_str = ''
+        for i in range(len(encoded_str) // self.r):
+            shift = i * self.r
+            substring = encoded_str[shift : shift + self.r]
+            bit_count_dict = {bit: substring.count(bit) for bit in substring}
+            max_count = max(bit_count_dict.values())
+            prevalent_bits = [i for i, count in bit_count_dict.items() if count == max_count]
+            if len(prevalent_bits) > 1:
+                return f"Múltiplos erros no segmento de número {i}: {substring} causaram empate entre os bits, impossível corrigir"
+            correct_bit = prevalent_bits[0]
+            decoded_str += correct_bit
+            if len(bit_count_dict) > 1:
+                error_index = substring.index("1") if correct_bit == "0" else substring.index("0")
+                print(f"Erro encontrado no bit número {error_index + shift + 1} (da esquerda para a direita, iniciando em 1): {get_error_highlight(substring, error_index)}")
+        return decoded_str
+
+    def get_additional_parameters(self):
+        try:
+            r_ = int(input(
+                f"Insira um valor válido para R (caso inválido, r = {self.DEFAULT_R_VALUE} ou qualquer valor configurado anteriormente): "))
+            if r_ <= 0:
+                raise ValueError
+            self.r = r_
+        except ValueError:
+            pass
+
+
+class Crc(ErrorCorrectionEncoder):
+    DEFAULT_GENERATOR = "1001"
+    generator: str
+    d: int
+
+    def __init__(self, name_: str):
+        super().__init__(name_)
+        self.set_generator(self.DEFAULT_GENERATOR)
+
+    def get_rest(self, data: str):
+        substring = data[:self.d]
+        for i in range(len(substring), len(data) + 1):
+            xor_value = int(self.generator, 2) * int(substring[0])
+            xor_sum = int(substring, 2) ^ xor_value
+            substring = format(xor_sum, f'0{self.d}b')[1:]
+            if i < len(data):
+                substring += data[i]
+        return substring
+
+    def encode(self, str_to_encode: str):
+        """Adding r = d - 1 zeros"""
+        str_with_zeros = str_to_encode + ('0' * (self.d - 1))
+        return str_to_encode + self.get_rest(str_with_zeros)
+
+    def decode(self, encoded_str: str):
+        expected_rest = '0' * (self.d - 1)
+        rest = self.get_rest(encoded_str)
+        if rest == expected_rest:
+            print(f"Resto = {rest}, mensagem recebida corretamente.")
+            return encoded_str[:-self.d + 1]
+        else:
+            print(f"Resto = {rest}, mensagem recebida com erro.")
+            return encoded_str[:-self.d + 1] + rest
+
+    def get_additional_parameters(self):
+        generator_ = input("Insira o polinômio gerador em formato binário (caso inválido, o valor padrão é 1001): ")
+        if all([c == "1" or c == "0" for c in generator_]) and len(generator_) > 0:
+            self.set_generator(generator_)
+
+    def set_generator(self, generator_):
+        self.generator = generator_
+        self.d = len(generator_)
+
+
+def get_error_highlight(sequence: str, error_index: int):
+    return sequence[:error_index] + '>' + sequence[error_index] + '<' + sequence[error_index+1:]
+
+
+class Hamming74(ErrorCorrectionEncoder):
+    # 1 0 0 0 | 1 0 1 -> 5
+    # 0 1 0 0 | 1 1 0 -> 6
+    # 0 0 1 0 | 1 1 1 -> 7
+    # 0 0 0 1 | 0 1 1 -> 3
+    CODE_SEQUENCE = [5, 6, 7, 3]
+
+    XOR_ORDER = {
+        4: [0, 2, 1],
+        5: [1, 2, 3],
+        6: [0, 2, 3]
+    }
+
+    def __init__(self, name_: str):
+        super().__init__(name_)
+
+    # DDDDPPP
+    def encode(self, str_to_encode: str):
+        """Adiciona zeros ao final para que o tamanho seja multiplo de 4"""
+        if len(str_to_encode) % 4:
+            str_to_encode += '0' * (-len(str_to_encode) % 4)
+            print(f"Foi necessário adicionar {-len(str_to_encode) % 4} zeros de padding ao final da mensagem. Por favor, desconsidere-os após a decodificação.")
+        sequences = wrap(str_to_encode, 4)
+        encoded_str = ''
+        for sequence in sequences:
+            """Pega o código pela lista e multiplica por 1 ou 0 de acordo com o bit da posição"""
+            codes_to_use = [self.CODE_SEQUENCE[i] * int(sequence[i]) for i in range(4)]
+            """Reduz a lista de códigos com XOR"""
+            reduced_code = reduce(lambda x, y: x ^ y, codes_to_use)
+            """Formata em binário com zeros à esquerda e adiciona tudo ao valor de retorno"""
+            encoded_str += sequence + format(reduced_code, f'0{3}b')
+        return encoded_str
+
+    def decode(self, encoded_str: str):
+        """Check if input length of string is multiple of 7"""
+        if not self.is_valid_str_to_decode(encoded_str):
+            return "Mensagem com um número incorreto de caracteres!"
+
+        """Split the input string every 7th character"""
+        decoded_str = ''
+        sequences = wrap(encoded_str, 7)
+        for n, sequence in enumerate(sequences):
+            check_count_dict = {i: 0 for i in range(7)}
+            bits = list(map(int, sequence))
+            sequence_correct = True
+            for parity_bit_index in range(4, 7):
+                data_index_list = self.XOR_ORDER[parity_bit_index]
+                expected_parity_bit = bits[data_index_list[0]] ^ bits[data_index_list[1]] ^ bits[data_index_list[2]]
+                if expected_parity_bit == bits[parity_bit_index]:
+                    check_count_dict[parity_bit_index] += 1
+                    for index in data_index_list:
+                        check_count_dict[index] += 1
+                else:
+                    sequence_correct = False
+            if sequence_correct:
+                decoded_str += sequence[:4]
+            else:
+                bool_indices = [check_count_dict[i] > 0 for i in range(4)]
+                if all(bool_indices[:4]):
+                    wrong_parity_bit = min(check_count_dict, key=check_count_dict.get)
+                    print(f'Erro no bit de paridade número {wrong_parity_bit - 3} do segmento de número {n + 1}: {get_error_highlight(sequence, wrong_parity_bit)}')
+                    decoded_str += sequence[:4]
+                elif sum(bool_indices[:4]) == 3:
+                    wrong_data_bit_index = bool_indices.index(False)
+                    correction_bit = (int(sequence[wrong_data_bit_index]) + 1) % 2
+                    print(f'Erro no bit de dados número {wrong_data_bit_index + 1} do segmento de número {n + 1}: {get_error_highlight(sequence, wrong_data_bit_index)}')
+                    decoded_str += sequence[:wrong_data_bit_index] + str(correction_bit) + sequence[wrong_data_bit_index + 1 : 4]
+                elif sum(bool_indices) == 0:
+                    """Se todos os calculos falharam, o bit do meio deve ser alterado"""
+                    correction_bit = (int(sequence[2]) + 1) % 2
+                    print(f'Erro no bit de dados número 3 do segmento de número {n + 1}: {get_error_highlight(sequence, 2)}')
+                    decoded_str += sequence[:2] + str(correction_bit) + sequence[3:4]
+                else:
+                    print("Algo deu errado!")
+                    return
+        return decoded_str
+
+    def get_additional_parameters(self):
+        pass
+
+    def is_valid_str_to_decode(self, encoded_str: str):
+        return len(encoded_str) % 7 == 0
+
+
+# ------------------------------ CODIFICAÇÕES DO PRÉVIAS (TRABALHO 1) ------------------------------
 
 class Golomb(Encoder):
     DEFAULT_K_VALUE = 64
@@ -197,6 +397,23 @@ class FibonacciZeckendorf(Encoder):
 
     def is_valid_str_to_encode(self, str_to_encode: str):
         return has_no_zeros(str_to_encode)
+
+
+class Ascii(Encoder):
+    def __init__(self, name_):
+        super().__init__(name_)
+
+    def encode(self, str_to_encode: str):
+        return ''.join([format(ord(c), f'0{8}b') for c in str_to_encode])
+
+    def decode(self, encoded_str: str):
+        char_list = wrap(encoded_str, 8)
+        return ''.join([chr(int(c, 2)) for c in char_list])
+
+    def get_additional_parameters(self):
+        pass
+
+
 
 
 class Huffman(Encoder):
